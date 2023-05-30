@@ -348,10 +348,16 @@ def connect_for_single_sparse_block(population_idx, k, extern_input_rate, extern
             if dtype == "single":
                 weight = np.random.rand(input_block_idx.shape[0], 2).astype(np.float32)
             elif dtype == "uint8":
-                weight = (np.random.randint(0, 256, dtype=np.uint8, size=(input_block_idx.shape[0], 2)))
+                weight = (np.random.randint(64, 128, dtype=np.uint8, size=(input_block_idx.shape[0], 2)))
                 # TODO: make w_E* and w_I* different for delayed cancellation.
             else:
                 raise NotImplementedError
+            amplification_ind = np.where(input_block_idx % 2==0)[0]
+            weight[amplification_ind] = weight[amplification_ind] * 2
+            if population_idx % 10 == 2: # 2/3E as destination
+                voxel_ind = population_idx // 10
+                E4_index = (input_block_idx == (voxel_ind * 10 + 4)).nonzero()[0]
+                weight[E4_index] = (np.random.randint(128, 256, dtype=np.uint8, size=(len(E4_index), 2)))
 
             input_neuron_idx = np.zeros_like(input_block_idx, dtype=np.uint32)
             for _idx in np.unique(input_block_idx):

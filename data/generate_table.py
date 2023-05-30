@@ -70,7 +70,7 @@ class TestBlock(unittest.TestCase):
         return second_path, os.path.join(second_path, "module")
 
     @staticmethod
-    def _add_laminar_cortex_model(conn_prob, gm):
+    def _add_laminar_cortex_model(conn_prob, gm, synapse):
         """
         Process the connection probability matrix, grey matter and degree scale for DTB with pure voxel and micro-column
         structure.  Each voxel is split into 2 populations (E and I). Each micro-column is spilt into 10 populations
@@ -117,13 +117,17 @@ class TestBlock(unittest.TestCase):
                            34.9 * 80, 34.9 * 20,
                            7.6 * 82, 7.6 * 18,
                            22.1 * 83, 22.1 * 17], dtype=np.float64)  # ignore the L1 neurons
-        lcm_gm = lcm_gm / lcm_gm.sum()
+        with np.errstate(divide='ignore', invalid='ignore'):
+            lcm_connect_prob = lcm_connect_prob * lcm_gm[:, None]
+            lcm_gm = lcm_gm / lcm_gm.sum()
         weight = lcm_gm[::2]
         weight = weight / weight.sum(axis=0)
         weight = np.broadcast_to(weight, (conn_prob.data.shape[0], 5))
 
         lcm_connect_prob = lcm_connect_prob / np.sum(lcm_connect_prob)
-        inner_conn = conn_prob.sum(axis=1).data * lcm_connect_prob[:, :10].sum()
+        degree_scale = lcm_connect_prob.sum(axis=1) / lcm_connect_prob.sum()
+        degree_scale = synapse[:, None] * degree_scale[None, :]
+        degree_scale = degree_scale.reshape(-1)
 
         corrds1 = np.empty(
             [4, conn_prob.coords.shape[1] * lcm_connect_prob.shape[0] * int(lcm_connect_prob.shape[0] / 2)],
@@ -150,7 +154,8 @@ class TestBlock(unittest.TestCase):
         corrds2[(1, 3), :] = np.broadcast_to(lcm_connect_prob_inner.coords[:, None, :],
                                              [2, conn_prob.shape[0], lcm_connect_prob_inner.coords.shape[1]]).reshape(
             [2, -1])
-        data2 = np.reshape(lcm_connect_prob_inner.data[None, :] * inner_conn[:, None], [-1])
+        data2 = np.reshape(np.broadcast_to(lcm_connect_prob_inner.data[None, :],
+                                           (conn_prob.shape[0], lcm_connect_prob_inner.data.shape[0])), [-1])
 
         coords = np.concatenate([corrds1, corrds2, ], axis=1)
         data = np.concatenate([data1, data2], axis=0)
@@ -165,32 +170,23 @@ class TestBlock(unittest.TestCase):
         out_conn_prob = sparse.COO(coords=coords, data=data, shape=shape)
         out_conn_prob = out_conn_prob.reshape((conn_prob.shape[0] * lcm_connect_prob.shape[0],
                                                conn_prob.shape[1] * (lcm_connect_prob.shape[1] - 1)))
-        out_degree_scale = out_conn_prob.sum(axis=1).todense()
-        out_degree_scale = out_degree_scale / out_degree_scale.sum()
 
         gm /= gm.sum()
         out_gm = (gm[:, None] * lcm_gm[None, :]).reshape([-1])
 
-        return out_conn_prob, out_gm, out_degree_scale
+        return out_conn_prob, out_gm, degree_scale
 
-    def _test_generate_cortex_brain(self, root_path="table_file", degree=100,
-                                    scale=int(1e9), dtype="uint8"):
+    def test_generate_cortex_brain(self, root_path="table_file", degree=100,
+                                   scale=int(1e9), dtype="uint8"):
         first_path, second_path = self._make_directory_tree(root_path, scale, "column_src", dtype=dtype)
         blocks = 200
         print(f"Total {scale} neurons for DTB, merge to {blocks} blocks")
-        with open("raw_data/cortex.pickle", "rb") as f:
+        with open("processed_data/graph_cortex.pickle", "rb") as f:
             file = pickle.load(f)
         conn_prob = file["conn_prob"]
-        block_size = file["gm"]
-
-        conn_prob, block_size, degree_scale = self._add_laminar_cortex_model(conn_prob, block_size)
-        degree_ = (degree * degree_scale / block_size).astype(np.uint16)
-        # print("original degree nonzero", np.where(degree_scale)[0].sum() / len(degree_scale))
-        # print("actual degree nonzero", np.where(degree_)[0].sum() / len(degree_scale))
-        # import matplotlib.pyplot as plt
-        # plt.hist(degree_, bins=50, rwidth=0.8)
-        # plt.savefig("./degree_.png")
-        # plt.close()
+        block_size = file["block_size"]
+        degree_scale = file["degree_scale"]
+        degree_ = (degree * degree_scale).astype(np.uint16)
 
         kwords = [{"V_th": -50,
                    "V_reset": -55,
