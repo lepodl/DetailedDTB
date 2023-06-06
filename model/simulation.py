@@ -7,16 +7,15 @@
 import os
 import time
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from scipy.io import savemat
+from cuda_develop.python.dist_blockwrapper_pytorch import BlockWrapper as block
 
-from cuda.python.dist_blockwrapper_pytorch import BlockWrapper as block
+from model.bold_model_pytorch import BOLD
 from utils.default_params import bold_params, v_th
-from simulation.bold_model_pytorch import BOLD
-from utils.helpers import load_if_exist, torch_2_numpy
+from utils.helpers import torch_2_numpy
 from utils.pretty_print import pretty_print, table_print
-from utils.sample import specified_sample_voxel
 
 
 class simulation(object):
@@ -106,6 +105,7 @@ class simulation(object):
         self.vmean_option = kwargs.get("vmean_option", False)
         self.sample_option = kwargs.get("sample_option", False)
         self.imean_option = kwargs.get("imean_option", False)
+        self.draw_figs = kwargs.get("draw_figs", False)
 
     def clear_mode(self):
         """
@@ -118,13 +118,10 @@ class simulation(object):
         self.vmean_option = False
         self.imean_option = False
         self.print_info = False
+        self.draw_figs = False
 
     def update(self, hp_index, param):
         """
-        Use a distribution of gamma(alpha, beta) to update neuronal params,
-        where alpha = hpyer_param * 1e8, beta = 1e8.
-
-        Thus, the obtained distribution is approximately a delta distribution.
         In other words, we use the same value to update a certain set of parameters of neurons.
 
         Parameters
@@ -139,12 +136,10 @@ class simulation(object):
         population_info = torch.stack(
             torch.meshgrid(self.population_id, torch.tensor([hp_index], dtype=torch.int64, device="cuda:0")),
             dim=-1).reshape((-1, 2))
-        alpha = torch.ones(self.num_populations, device="cuda:0") * param * 1e8
-        beta = torch.ones(self.num_populations, device="cuda:0") * 1e8
-        self.block_model.gamma_property_by_subblk(population_info, alpha, beta, debug=False)
+        param = torch.ones(self.num_populations, device="cuda:0") * param
+        self.block_model.assign_property_by_subblk(population_info, param)
 
-    def sample(self, aal_region, population_base, num_sample_voxel_per_region=1, num_neurons_per_voxel=300,
-               specified_info=None):
+    def sample(self, *args, **kwargs):
         """
 
         set sample idx of neurons in this simulation object.
@@ -160,17 +155,8 @@ class simulation(object):
 
         """
 
-        sample_idx = load_if_exist(specified_sample_voxel, os.path.join(self.write_path, "sample_idx"),
-                                   aal_region=aal_region,
-                                   neurons_per_population_base=population_base,
-                                   num_sample_voxel_per_region=num_sample_voxel_per_region,
-                                   num_neurons_per_voxel=num_neurons_per_voxel, specified_info=specified_info)
-        sample_idx = torch.from_numpy(sample_idx).cuda()[:, 0]
-        num_sample = sample_idx.shape[0]
-        assert sample_idx.max() < self.num_neurons
-        self.block_model.set_samples(sample_idx)
-        load_if_exist(lambda: self.block_model.neurons_per_subblk.cpu().numpy(),
-                      os.path.join(self.write_path, "blk_size"))
+        self.block_model.set_samples_by_specifying_popu_idx(self)
+        num_sample = 150
         self.num_sample = num_sample
 
         return num_sample
@@ -267,7 +253,7 @@ class simulation(object):
         total_res = []
 
         for return_info in self.block_model.run(step, freqs=True, vmean=vmean_option, sample_for_show=sample_option,
-                                                imean=imean_option):
+                                                imean=imean_option, t_steps=1, equal_sample=True):
             Freqs, *others = return_info
             total_res.append(return_info)
 
@@ -380,7 +366,7 @@ class simulation(object):
                     stat_data, stat_table = self.block_model.last_time_stat()
                     np.save(os.path.join(self.write_path, f"stat_{i}.npy"), stat_data)
                     stat_table.to_csv(os.path.join(self.write_path, f"stat_{i}.csv"))
-                    print('print_stat_time', time.time()-t_sim_end, stat_table)
+                    print('print_stat_time', time.time() - t_sim_end, stat_table)
             if self.sample_option:
                 np.save(os.path.join(self.write_path, f"spike_{state}_assim_{ii}.npy"), Spike)
                 np.save(os.path.join(self.write_path, f"vi_{state}_assim_{ii}.npy"), Vi)
@@ -390,7 +376,53 @@ class simulation(object):
                 np.save(os.path.join(self.write_path, f"imean_{state}_assim_{ii}.npy"), Imean)
             np.save(os.path.join(self.write_path, f"freqs_{state}_assim_{ii}.npy"), FFreqs)
             np.save(os.path.join(self.write_path, f"bold_{state}_assim.npy"), bolds_out)
-            savemat(os.path.join(self.write_path, f"bold_{state}_assim.mat"), {'bolds_out': bolds_out})
+            # savemat(os.path.join(self.write_path, f"bold_{state}_assim.mat"), {'bolds_out': bolds_out})
+            if self.draw_figs:
+                fig = plt.figure(figsize=(6, 7))
+                Spike = Spike[-2:, :, :].reshape((2 * step, -1))
+                ax = fig.add_axes([0.1, 0.1, 0.8, 0.75], frameon=True)
+                spike_events = [Spike[:, i].nonzero()[0] for i in range(Spike.shape[1])]
+                s = 0
+                colors = ["tab:blue", "tab:red"]
+                total = self.num_sample
+                sample_dis = np.array([80, 20, 80, 20, 20, 10, 60, 10], dtype=np.int32) * 2
+                names = ['L2/3E', 'L2/3I', 'L4E', 'L4I', 'L5E', 'L5I', 'L6E', 'L6I']
+                for i, size in enumerate(sample_dis):
+                    e = s + size
+                    color = colors[i % 2]
+                    y_inter = (s + e) / 2 / total - 0.02
+                    fr = Spike[:, s:e].mean() * 1000
+                    ax.eventplot(spike_events[s:e], lineoffsets=np.arange(s, e), colors=color, linestyles="dashed")
+                    # xx, yy = Spike[:, s:e].nonzero()
+                    # yy = yy + s
+                    # ax.scatter(xx, yy, marker=',', s=1., color=color)
+                    s = e
+                    ax.text(0.8, y_inter, names[i] + f": {fr:.1f}Hz", color=color, fontsize=9, transform=ax.transAxes)
+                    ax.set_ylim([0, 900])
+                    ax.set_yticks([0, 900])
+                    ax.set_yticklabels([0, 900])
+                    ax.set_ylabel("Neuron")
+                    ax.set_xlim([0, 1600])
+                    ax.set_xticks([0, 1000, 1600])
+                    ax.set_xticklabels(["0.0", "1.0", "1.6"])
+                    ax.set_xlabel("Time (s)")
+                    # ax.invert_yaxis()
+                fig.savefig(os.path.join(self.write_path, "column.png"))
+                plt.close(fig)
+                fig_new, ax = plt.subplots(3, 2, figsize=(8, 7))
+                for i in range(3):
+                    for j in range(2):
+                        sample_voxel = np.random.randint(0, self.num_voxels, 1)
+                        bold = bolds_out[:, sample_voxel]
+                        ax[i, j].plot(np.arange(bold.shape[0]), bold, lw=1.)
+                        ax[i, j].set_ylim([0.02, 0.08])
+                        ax[i, j].spines["top"].set_visible(False)
+                        ax[i, j].spines["right"].set_visible(False)
+                        ax[i, j].set_xlabel("Time")
+                        ax[i, j].set_ylabel("bold")
+                fig_new.tight_layout()
+                fig_new.savefig(os.path.join(self.write_path, "bold.png"))
+                plt.close(fig_new)
 
         pretty_print(f"Totally have Done, Cost time {time.time() - start_time:.2f} ")
 

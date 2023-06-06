@@ -60,7 +60,7 @@ class TestBlock(unittest.TestCase):
         os.makedirs(root_path, exist_ok=True)
         os.makedirs(os.path.join(root_path, "raw_data"), exist_ok=True)
         second_path = os.path.join(root_path,
-                                   f"dti_distribution_{int(scale // 1e6)}_{extra_info}")
+                                   f"dti_distribution_{int(scale // 1e6)}m_{extra_info}")
         os.makedirs(second_path, exist_ok=True)
         os.makedirs(os.path.join(second_path, "module"), exist_ok=True)
         os.makedirs(os.path.join(second_path, "multi_module", dtype), exist_ok=True)  # 'single' means the precision.
@@ -177,9 +177,9 @@ class TestBlock(unittest.TestCase):
         return out_conn_prob, out_gm, degree_scale
 
     def test_generate_cortex_brain(self, root_path="table_file", degree=100,
-                                   scale=int(1e9), dtype="uint8"):
-        first_path, second_path = self._make_directory_tree(root_path, scale, "column_src", dtype=dtype)
-        blocks = 200
+                                   scale=int(5e8), dtype="uint8"):
+        first_path, second_path = self._make_directory_tree(root_path, scale, "column_nospecial", dtype=dtype)
+        blocks = 50
         print(f"Total {scale} neurons for DTB, merge to {blocks} blocks")
         with open("processed_data/graph_cortex.pickle", "rb") as f:
             file = pickle.load(f)
