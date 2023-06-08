@@ -305,7 +305,7 @@ def connect_for_single_sparse_block(population_idx, k, extern_input_rate, extern
         e = k
     assert 0 <= s <= e <= k
     _extern_input_k_sizes = np.array(extern_input_k_sizes, dtype=np.int64)
-    extern_input_rate = extern_input_rate / extern_input_rate.sum()  # normalization to 1.
+    # extern_input_rate = extern_input_rate / extern_input_rate.sum()  # normalization to 1.
 
     if s < e:
         if isinstance(extern_input_rate, np.ndarray):
@@ -356,11 +356,11 @@ def connect_for_single_sparse_block(population_idx, k, extern_input_rate, extern
             # amplification_ind = np.where(input_block_idx % 2==0)[0]
             # weight[amplification_ind] = weight[amplification_ind] * 2
 
-            # amplification 4E to 2/3E
-            if population_idx % 10 == 2:  # 2/3E as destination
-                voxel_ind = population_idx // 10
-                E4_index = (input_block_idx == (voxel_ind * 10 + 4)).nonzero()[0]
-                weight[E4_index] = (np.random.randint(128, 256, dtype=np.uint8, size=(len(E4_index), 2)))
+            # # amplification 4E to 2/3E
+            # if population_idx % 10 == 2:  # 2/3E as destination
+            #     voxel_ind = population_idx // 10
+            #     E4_index = (input_block_idx == (voxel_ind * 10 + 4)).nonzero()[0]
+            #     weight[E4_index] = (np.random.randint(128, 256, dtype=np.uint8, size=(len(E4_index), 2)))
 
             # cortico-cortical synaptic weights are redrawn. x=1.5 and X_I=2
             voxel_ind = population_idx // 10

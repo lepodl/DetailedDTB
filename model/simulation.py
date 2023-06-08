@@ -132,7 +132,7 @@ class simulation(object):
         param: float
 
         """
-        print(f"update {hp_index}th attribute, to value {param:.3f}\n")
+        print(f"update {hp_index}th attribute, to value {param}\n")
         population_info = torch.stack(
             torch.meshgrid(self.population_id, torch.tensor([hp_index], dtype=torch.int64, device="cuda:0")),
             dim=-1).reshape((-1, 2))
@@ -252,8 +252,8 @@ class simulation(object):
         """
         total_res = []
 
-        for return_info in self.block_model.run(step, freqs=True, vmean=vmean_option, sample_for_show=sample_option,
-                                                imean=imean_option, t_steps=1, equal_sample=True):
+        for return_info in self.block_model.run(step, freqs=True, freq_char=True, vmean=vmean_option, sample_for_show=sample_option, iou=True,
+                                                imean=imean_option, t_steps=10, equal_sample=True):
             Freqs, *others = return_info
             total_res.append(return_info)
 
@@ -275,7 +275,7 @@ class simulation(object):
         if sample_option:
             temp_spike = torch.stack([x[out_base] for x in total_res], dim=0)
             temp_vsample = torch.stack([x[out_base + 1] for x in total_res], dim=0)
-            temp_spike &= (torch.abs(temp_vsample - v_th) / 50 < 1e-5)
+            # temp_spike &= (torch.abs(temp_vsample - v_th) / 50 < 1e-5)
             out += (temp_spike, temp_vsample,)
             out_base += 2
         if imean_option:
@@ -398,9 +398,9 @@ class simulation(object):
                     # ax.scatter(xx, yy, marker=',', s=1., color=color)
                     s = e
                     ax.text(0.8, y_inter, names[i] + f": {fr:.1f}Hz", color=color, fontsize=9, transform=ax.transAxes)
-                    ax.set_ylim([0, 900])
-                    ax.set_yticks([0, 900])
-                    ax.set_yticklabels([0, 900])
+                    ax.set_ylim([0, 600])
+                    ax.set_yticks([0, 600])
+                    ax.set_yticklabels([0, 600])
                     ax.set_ylabel("Neuron")
                     ax.set_xlim([0, 1600])
                     ax.set_xticks([0, 1000, 1600])
