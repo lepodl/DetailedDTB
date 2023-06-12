@@ -251,6 +251,7 @@ class simulation(object):
 
         """
         total_res = []
+        fr = []
 
         for return_info in self.block_model.run(step, freqs=True, freq_char=True, vmean=vmean_option, sample_for_show=sample_option, iou=True,
                                                 imean=imean_option, t_steps=10, equal_sample=True):
@@ -262,11 +263,13 @@ class simulation(object):
                                   (0, self.num_voxels * self.populations_per_voxel))
             act = (act / self.num_neurons_per_voxel_cpu).reshape(-1)
             act = torch.from_numpy(act).cuda()
+            fr.append(act)
             bold_out = self.bold.run(torch.max(act, torch.tensor([1e-05]).type_as(act)))
         if bold_detail:
             return act, self.bold.s, self.bold.q, self.bold.v, self.bold.f_in, bold_out
-        temp_freq = torch.stack([x[0] for x in total_res], dim=0)
-        out = (temp_freq,)
+        # temp_freq = torch.stack([x[0] for x in total_res], dim=0)
+        temp_fr = torch.stack(fr, dim=0)
+        out = (temp_fr,)
         out_base = 1
         if vmean_option:
             temp_vmean = torch.stack([x[out_base] for x in total_res], dim=0)
@@ -330,7 +333,7 @@ class simulation(object):
         bolds_out = np.zeros([observation_time, self.num_voxels], dtype=np.float32)
         for ii in range((observation_time - 1) // 50 + 1):
             nj = min(observation_time - ii * 50, 50)
-            FFreqs = np.zeros([nj, step, self.num_populations], dtype=np.uint32)
+            Firing = np.zeros([nj, step, self.num_voxels], dtype=np.float32)  # voxel firing rate
             if self.vmean_option:
                 Vmean = np.zeros([nj, step, self.num_populations], dtype=np.float32)
             if self.sample_option:
@@ -346,7 +349,7 @@ class simulation(object):
                     self.block_model.mul_property_by_subblk(population_info, hp_total[i].reshape(-1))
                 out = self.evolve(step, vmean_option=self.vmean_option, sample_option=self.sample_option,
                                   imean_option=self.imean_option)
-                FFreqs[j] = torch_2_numpy(out[0])
+                Firing[j] = torch_2_numpy(out[0])
                 out_base = 1
                 if self.vmean_option:
                     Vmean[j] = torch_2_numpy(out[out_base])
@@ -361,7 +364,7 @@ class simulation(object):
                 bolds_out[i, :] = torch_2_numpy(out[-1])
                 t_sim_end = time.time()
                 print(
-                    f"{i}th observation_time, mean fre: {torch.mean(torch.mean(out[0] / self.block_model.neurons_per_subblk.float() * 1000, dim=0)):.1f}, cost time {t_sim_end - t_sim_start:.1f}")
+                    f"{i}th observation_time, mean fre: {Firing[j].mean():.1f}, cost time {t_sim_end - t_sim_start:.1f}")
                 if self.print_info:
                     stat_data, stat_table = self.block_model.last_time_stat()
                     np.save(os.path.join(self.write_path, f"stat_{i}.npy"), stat_data)
@@ -374,18 +377,19 @@ class simulation(object):
                 np.save(os.path.join(self.write_path, f"vmean_{state}_assim_{ii}.npy"), Vmean)
             if self.imean_option:
                 np.save(os.path.join(self.write_path, f"imean_{state}_assim_{ii}.npy"), Imean)
-            np.save(os.path.join(self.write_path, f"freqs_{state}_assim_{ii}.npy"), FFreqs)
+            np.save(os.path.join(self.write_path, f"firing_{state}_assim_{ii}.npy"), Firing)
             np.save(os.path.join(self.write_path, f"bold_{state}_assim.npy"), bolds_out)
             # savemat(os.path.join(self.write_path, f"bold_{state}_assim.mat"), {'bolds_out': bolds_out})
             if self.draw_figs:
                 fig = plt.figure(figsize=(6, 7))
+                # print("Spike", Spike.shape)
                 Spike = Spike[-2:, :, :].reshape((2 * step, -1))
                 ax = fig.add_axes([0.1, 0.1, 0.8, 0.75], frameon=True)
-                spike_events = [Spike[:, i].nonzero()[0] for i in range(Spike.shape[1])]
+                spike_events = [Spike[:, i].nonzero()[0] for i in range(300)]
                 s = 0
                 colors = ["tab:blue", "tab:red"]
-                total = self.num_sample
-                sample_dis = np.array([80, 20, 80, 20, 20, 10, 60, 10], dtype=np.int32) * 2
+                total = 300
+                sample_dis = np.array([80, 20, 80, 20, 20, 10, 60, 10], dtype=np.int32)
                 names = ['L2/3E', 'L2/3I', 'L4E', 'L4I', 'L5E', 'L5I', 'L6E', 'L6I']
                 for i, size in enumerate(sample_dis):
                     e = s + size
@@ -398,9 +402,9 @@ class simulation(object):
                     # ax.scatter(xx, yy, marker=',', s=1., color=color)
                     s = e
                     ax.text(0.8, y_inter, names[i] + f": {fr:.1f}Hz", color=color, fontsize=9, transform=ax.transAxes)
-                    ax.set_ylim([0, 600])
-                    ax.set_yticks([0, 600])
-                    ax.set_yticklabels([0, 600])
+                    ax.set_ylim([0, 300])
+                    ax.set_yticks([0, 300])
+                    ax.set_yticklabels([0, 300])
                     ax.set_ylabel("Neuron")
                     ax.set_xlim([0, 1600])
                     ax.set_xticks([0, 1000, 1600])
@@ -415,7 +419,7 @@ class simulation(object):
                         sample_voxel = np.random.randint(0, self.num_voxels, 1)
                         bold = bolds_out[:, sample_voxel]
                         ax[i, j].plot(np.arange(bold.shape[0]), bold, lw=1.)
-                        ax[i, j].set_ylim([0.02, 0.08])
+                        ax[i, j].set_ylim([0., 0.04])
                         ax[i, j].spines["top"].set_visible(False)
                         ax[i, j].spines["right"].set_visible(False)
                         ax[i, j].set_xlabel("Time")
