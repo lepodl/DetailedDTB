@@ -364,7 +364,7 @@ class simulation(object):
                 bolds_out[i, :] = torch_2_numpy(out[-1])
                 t_sim_end = time.time()
                 print(
-                    f"{i}th observation_time, mean fre: {Firing[j].mean():.1f}, cost time {t_sim_end - t_sim_start:.1f}")
+                    f"{i}th observation_time, mean fre: {Firing[j].mean():.4f}, cost time {t_sim_end - t_sim_start:.1f}")
                 if self.print_info:
                     stat_data, stat_table = self.block_model.last_time_stat()
                     np.save(os.path.join(self.write_path, f"stat_{i}.npy"), stat_data)

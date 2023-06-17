@@ -19,9 +19,12 @@ rc_file(r'../utils/plotstyle.rc')
 # rcParams['font.sans-serif'] = ['Arial']
 # rc('text', usetex=True)
 
+sample_n = 900
+document_time = 10
+bold_time = 300
 
 def typical_raster(res_path: str, region_idx=None, fig=None):
-    file_nmae = re.compile(r"spike_.+_assim_\d.npy")
+    file_nmae = re.compile(r"spike_.+_assim_\d+.npy")
     blocks = [name for name in os.listdir(res_path) if file_nmae.fullmatch(name)]
     blocks = sorted(blocks)
     spike_path = os.path.join(res_path, blocks[-1])
@@ -32,14 +35,14 @@ def typical_raster(res_path: str, region_idx=None, fig=None):
     ax[1] = fig.add_axes([0.32, 0.55, 0.2, 0.38], frameon=True)
     Spike = Spike[-2:, :, :].reshape((2 * 800, -1))  # steps: 800
     if region_idx is None:
-        spike_index = np.concatenate([np.arange(i * 300, (i + 1) * 300) for i in [43, 103]])
+        spike_index = np.concatenate([np.arange(i * sample_n, (i + 1) * sample_n) for i in [43, 103]])
     else:
         assert len(region_idx) == 2
-        spike_index = np.concatenate([np.arange(i * 300, (i + 1) * 300) for i in region_idx])
+        spike_index = np.concatenate([np.arange(i * sample_n, (i + 1) * sample_n) for i in region_idx])
     spike_events = [Spike[:, i].nonzero()[0] for i in spike_index]
     colors = ["tab:blue", "tab:red"]
-    total = 300
-    sample_dis = np.array([80, 20, 80, 20, 20, 10, 60, 10], dtype=np.int32)  # sum=300
+    total = sample_n
+    sample_dis = np.array([80, 20, 80, 20, 20, 10, 60, 10], dtype=np.int32) * 3  # sum=300
     names = ['L2/3E', 'L2/3I', 'L4E', 'L4I', 'L5E', 'L5I', 'L6E', 'L6I']
     for j in range(len(region_idx)):
         s = 0
@@ -47,16 +50,16 @@ def typical_raster(res_path: str, region_idx=None, fig=None):
             e = s + size
             color = colors[i % 2]
             y_inter = (s + e) / 2 / total - 0.02
-            fr = Spike[:, j*300 + s: j * 300 + e].mean() * 1000
-            ax[j].eventplot(spike_events[j*300 + s: j * 300 + e], lineoffsets=np.arange(s, e), colors=color, linestyles="dashed")
+            fr = Spike[:, j*sample_n + s: j * sample_n + e].mean() * 1000
+            ax[j].eventplot(spike_events[j*sample_n + s: j * sample_n + e], lineoffsets=np.arange(s, e), colors=color, linestyles="dashed")
             # xx, yy = Spike[:, s:e].nonzero()
             # yy = yy + s
             # ax.scatter(xx, yy, marker=',', s=1., color=color)
             s = e
             ax[j].text(0.6, y_inter, names[i] + f": {fr:.1f}Hz", color=color, fontsize=9, transform=ax[j].transAxes)
-            ax[j].set_ylim([0, 300])
-            ax[j].set_yticks([0, 300])
-            ax[j].set_yticklabels([0, 300])
+            ax[j].set_ylim([0, sample_n])
+            ax[j].set_yticks([0, sample_n])
+            ax[j].set_yticklabels([0, sample_n])
             ax[j].set_ylabel("Neuron")
             ax[j].set_xlim([0, 1600])
             ax[j].set_xticks([0, 1000, 1600])
@@ -69,7 +72,7 @@ def typical_raster(res_path: str, region_idx=None, fig=None):
 
 
 def typical_fr(res_path: str, voxel_idx=None, fig=None):
-    file_nmae = re.compile(r"firing_.+_assim_\d.npy")
+    file_nmae = re.compile(r"firing_.+_assim_\d+.npy")
     blocks = [name for name in os.listdir(res_path) if file_nmae.fullmatch(name)]
     blocks = sorted(blocks)
     firing_path = os.path.join(res_path, blocks[-1])
@@ -99,9 +102,11 @@ def typical_fr(res_path: str, voxel_idx=None, fig=None):
 
 def heatmap_fc(res_path: str, fig=None):
     file_nmae = re.compile(r"bold_.+_assim.npy")
+    # file_nmae = re.compile(r"firing_.+_assim_\d+.npy")  # compute fc using firing rate
     blocks = [name for name in os.listdir(res_path) if file_nmae.fullmatch(name)]
     assert len(blocks) == 1
     bold_sim = np.load(os.path.join(res_path, blocks[0]))
+    bold_sim = bold_sim.reshape((-1, bold_sim.shape[-1]))
     file = h5py.File("../data/raw_data/NSR_data_May22.mat", "r")
     hpc_label = file["NSR_dti_HCPex_label"][:].squeeze()
     bold_exp = file["NSR_Resting_state"][:]
@@ -125,14 +130,18 @@ def heatmap_fc(res_path: str, fig=None):
         else:
             invalid_index.append(idx)
     invalid_index = np.array(invalid_index, dtype=np.int32)
-    bold_exp_region = bold_exp_region[:bold_sim_region.shape[0], :]
     fc_exp = np.corrcoef(bold_exp_region, rowvar=False)
     fc_exp[:, invalid_index] = np.nan
     fc_exp[invalid_index, :] = np.nan
 
+    bold_sim_region = bold_sim_region[:bold_time]
     fc_sim = np.corrcoef(bold_sim_region, rowvar=False)
     fc_sim[:, invalid_index] = np.nan
     fc_sim[invalid_index, :] = np.nan
+
+    fc_exp_flatten = fc_exp.flatten()
+    fc_sim_flatten = fc_sim.flatten()
+    p = np.corrcoef(fc_exp_flatten, fc_sim_flatten)[0, 1]
 
     ax = {}
     gs = gridspec.GridSpec(2, 1)
@@ -154,6 +163,10 @@ def heatmap_fc(res_path: str, fig=None):
                fontdict={'fontsize': 11, 'weight': 'bold',
                          'horizontalalignment': 'left', 'verticalalignment':
                              'bottom'}, transform=ax[1].transAxes)
+    ax[1].text(0.4, 1.2, f"p={p}",
+               fontdict={'fontsize': 11, 'weight': 'bold',
+                         'horizontalalignment': 'left', 'verticalalignment':
+                             'bottom'}, transform=ax[1].transAxes)
 
 
 def statics(res_path, fig=None):
@@ -165,28 +178,28 @@ def statics(res_path, fig=None):
     ax[2] = fig.add_subplot(gs[0, 2], frameon=True)
     # ax[3] = fig.add_subplot(gs[0, 3], frameon=False)
 
-    file_nmae = re.compile(r"firing_.+_assim_\d.npy")
+    file_nmae = re.compile(r"firing_.+_assim_\d+.npy")
     blocks = [name for name in os.listdir(res_path) if file_nmae.fullmatch(name)]
     blocks = sorted(blocks)
     firing_path = os.path.join(res_path, blocks[-1])
     print(f"\nload firing rate from {firing_path}")
     firing = np.load(firing_path)
-    firing = firing[-20:, :, :].reshape((20 * 800, -1))
+    firing = firing[-document_time:, :, :].reshape((document_time * 800, -1))
 
-    file_nmae = re.compile(r"spike_.+_assim_\d.npy")
+    file_nmae = re.compile(r"spike_.+_assim_\d+.npy")
     blocks = [name for name in os.listdir(res_path) if file_nmae.fullmatch(name)]
     blocks = sorted(blocks)
     spike_path = os.path.join(res_path, blocks[-1])
     print(f"\nload spike from {spike_path}")
     Spike = np.load(spike_path)
-    Spike = Spike[-20:, :, :].reshape((20 * 800, -1))  # steps: 800
+    Spike = Spike[-document_time:, :, :].reshape((document_time * 800, -1))  # steps: 800
 
     mean_fr = firing.mean(axis=0) * 1000
     ccs = firing.std(axis=0) / firing.mean(axis=0)
     cvs = []
-    num_voxel = int(Spike.shape[-1] / 300)
+    num_voxel = int(Spike.shape[-1] / sample_n)
     for ind in range(num_voxel):
-        spike = Spike[:, ind * 300:(ind + 1) * 300]
+        spike = Spike[:, ind * sample_n:(ind + 1) * sample_n]
         spike = spike.T.reshape(-1)
         pulse = np.nonzero(spike)[0]
         interval = pulse[1:] - pulse[:-1]
@@ -220,7 +233,8 @@ def statics(res_path, fig=None):
 
 
 if __name__ == '__main__':
-    res_path = r"/public/home/ssct004t/project/zenglb/DetailedDTB/data/result_data/simulation_june10th"
+    # res_path = r"/public/home/ssct004t/project/zenglb/DetailedDTB/data/result_data/simulation_june12th"
+    res_path = r"/public/home/ssct004t/project/wangjiexiang/Digital_twin_brain/simuafterda_rest_thalamus_500m_202306120931/debug_202306121138_0.4_0.15_4_350_1e-8_1.21_30_0.02_0.05_0_0.08_0.5_0.1ms"
     fig = plt.figure(figsize=(10, 10))
     region_idx = (10, 105)
     voxel_idx = (100, 10500)

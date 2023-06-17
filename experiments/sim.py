@@ -206,7 +206,7 @@ def open_server(slurm_name: str, nodes: int, single_slots: int = 4):
 
 
 block_dir = "/public/home/ssct004t/project/zenglb/DetailedDTB/data/table_file/dti_distribution_500m_whole_brain_bounding_new_outer1dot5"
-write_path = "/public/home/ssct004t/project/zenglb/DetailedDTB/data/result_data/simulation_june10th"
+write_path = "/public/home/ssct004t/project/zenglb/DetailedDTB/data/result_data/simulation_june12th_para"
 block_path = os.path.join(block_dir, "module/uint8")
 ip = open_server("nsr", nodes=14, single_slots=2)
 assert ip is not None
@@ -214,8 +214,8 @@ model = simulation_critical(ip, block_path, dt=1., route_path=None, column=True,
                             vmean_option=False, imean_option=True,
                             sample_option=True, name="spike_dynamics", write_path=write_path, draw_figs=True)
 model.sample()
-model.update(10, 0.00206)
-model.update(11, 0.000022)
-model.update(12, 0.0092)
+model.update(10, 0.002)
+model.update(11, 0.000025)
+model.update(12, 0.0091)
 model.block_model.update_ou_background_stimuli(4, 0.40, 0.15)
 model(step=800, observation_time=50, hp_index=None, hp_path=None)
