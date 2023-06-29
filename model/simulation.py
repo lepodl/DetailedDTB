@@ -13,7 +13,7 @@ import torch
 from cuda_develop.python.dist_blockwrapper_pytorch import BlockWrapper as block
 
 from model.bold_model_pytorch import BOLD
-from utils.default_params import bold_params, v_th
+from utils.default_params import bold_params
 from utils.helpers import torch_2_numpy
 from utils.pretty_print import pretty_print, table_print
 
@@ -81,6 +81,9 @@ class simulation(object):
         else:
             self.block_model = block(ip, block_path, dt, route_path=route_path, overlap=2)
             self.populations_per_voxel = 2
+        self.dt = dt
+        if self.dt == 0.1:
+            bold_params["delta_t"] = 1e-4
         self.bold = BOLD(**bold_params)
         self.population_id = self.block_model.subblk_id
         self.population_id_cpu = self.population_id.cpu().numpy()
@@ -252,9 +255,9 @@ class simulation(object):
         """
         total_res = []
         fr = []
-
+        t_steps = 1 if self.dt==0.1 else 10
         for return_info in self.block_model.run(step, freqs=True, freq_char=True, vmean=vmean_option, sample_for_show=sample_option, iou=True,
-                                                imean=imean_option, t_steps=10, equal_sample=True):
+                                                imean=imean_option, t_steps=t_steps, equal_sample=True):
             Freqs, *others = return_info
             total_res.append(return_info)
 
@@ -268,7 +271,7 @@ class simulation(object):
         if bold_detail:
             return act, self.bold.s, self.bold.q, self.bold.v, self.bold.f_in, bold_out
         # temp_freq = torch.stack([x[0] for x in total_res], dim=0)
-        temp_fr = torch.stack(fr, dim=0)
+        temp_fr = torch.stack(fr, dim=0) / self.dt
         out = (temp_fr,)
         out_base = 1
         if vmean_option:
@@ -331,6 +334,7 @@ class simulation(object):
         print(f"Total time is {total_T}, we only simulate {observation_time}\n")
 
         bolds_out = np.zeros([observation_time, self.num_voxels], dtype=np.float32)
+        step = step if self.dt==1. else step * 10
         for ii in range((observation_time - 1) // 50 + 1):
             nj = min(observation_time - ii * 50, 50)
             Firing = np.zeros([nj, step, self.num_voxels], dtype=np.float32)  # voxel firing rate
@@ -384,6 +388,9 @@ class simulation(object):
                 fig = plt.figure(figsize=(6, 7))
                 # print("Spike", Spike.shape)
                 Spike = Spike[-2:, :, :].reshape((2 * step, -1))
+                if self.dt==0.1:
+                    Spike = Spike.reshape((-1, 10, Spike.shape[-1]))
+                    Spike = Spike.sum(axis=1)
                 ax = fig.add_axes([0.1, 0.1, 0.8, 0.75], frameon=True)
                 spike_events = [Spike[:, i].nonzero()[0] for i in range(300)]
                 s = 0
@@ -395,7 +402,7 @@ class simulation(object):
                     e = s + size
                     color = colors[i % 2]
                     y_inter = (s + e) / 2 / total - 0.02
-                    fr = Spike[:, s:e].mean() * 1000
+                    fr = Spike[:, s:e].mean() * 1000 / self.dt
                     ax.eventplot(spike_events[s:e], lineoffsets=np.arange(s, e), colors=color, linestyles="dashed")
                     # xx, yy = Spike[:, s:e].nonzero()
                     # yy = yy + s

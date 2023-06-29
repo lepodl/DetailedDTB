@@ -21,7 +21,7 @@ rc_file(r'../utils/plotstyle.rc')
 
 sample_n = 900
 document_time = 10
-bold_time = 300
+bold_time = 400
 
 def typical_raster(res_path: str, region_idx=None, fig=None):
     file_nmae = re.compile(r"spike_.+_assim_\d+.npy")
@@ -31,8 +31,8 @@ def typical_raster(res_path: str, region_idx=None, fig=None):
     print(f"\nload spike from {spike_path}")
     Spike = np.load(spike_path)
     ax = {}
-    ax[0] = fig.add_axes([0.08, 0.55, 0.2, 0.38], frameon=True)
-    ax[1] = fig.add_axes([0.32, 0.55, 0.2, 0.38], frameon=True)
+    ax[0] = fig.add_axes([0.08, 0.55, 0.18, 0.38], frameon=True)
+    ax[1] = fig.add_axes([0.32, 0.55, 0.18, 0.38], frameon=True)
     Spike = Spike[-2:, :, :].reshape((2 * 800, -1))  # steps: 800
     if region_idx is None:
         spike_index = np.concatenate([np.arange(i * sample_n, (i + 1) * sample_n) for i in [43, 103]])
@@ -82,7 +82,7 @@ def typical_fr(res_path: str, voxel_idx=None, fig=None):
     assert voxel_idx is not None
     ax = {}
     gs = gridspec.GridSpec(2, 1)
-    gs.update(left=0.08, right=0.52, top=0.52, bottom=0.4, hspace=0.1)
+    gs.update(left=0.08, right=0.5, top=0.52, bottom=0.4, hspace=0.1)
     ax[0] = fig.add_subplot(gs[0, 0], frameon=True)
     ax[1] = fig.add_subplot(gs[1, 0], frameon=True)
 
@@ -121,12 +121,22 @@ def heatmap_fc(res_path: str, fig=None):
     print(f"\ntotally {len(uni_idx)} brain region")
     bold_sim_region = np.zeros((bold_sim.shape[0], region_num), dtype=np.float32)
     bold_exp_region = np.zeros((bold_exp.shape[0], region_num), dtype=np.float32)
+    time_sim = bold_sim.shape[0]
     invalid_index = []
+    p_bold = []
+    transient = 4
+    shift = 2
+    for i in range(N):
+        value = np.corrcoef(bold_sim[transient + shift:, i], bold_exp[transient: -shift + time_sim, i])[0, 1]
+        p_bold.append(value)
+    p_bold = np.array(p_bold).mean()
+
     for idx in range(len(uni_idx)):
         index = np.where(hpc_label == uni_idx[idx])[0]
         if len(index)>0:
             bold_sim_region[:, idx] = bold_sim[:, index].mean(axis=-1)
             bold_exp_region[:, idx] = bold_exp[:, index].mean(axis=-1)
+
         else:
             invalid_index.append(idx)
     invalid_index = np.array(invalid_index, dtype=np.int32)
@@ -145,9 +155,30 @@ def heatmap_fc(res_path: str, fig=None):
 
     ax = {}
     gs = gridspec.GridSpec(2, 1)
-    gs.update(left=0.58, right=0.92, top=0.93, bottom=0.4, hspace=0.15)
+    gs.update(left=0.53, right=0.74, top=0.93, bottom=0.4, hspace=0.1)
     ax[0] = fig.add_subplot(gs[0, 0], frameon=True)
     ax[1] = fig.add_subplot(gs[1, 0], frameon=True)
+
+    gs1 = gridspec.GridSpec(2, 1)
+    gs1.update(left=0.76, right=0.96, top=0.93, bottom=0.7, hspace=0.15)
+    ax[2] = fig.add_subplot(gs1[0, 0], frameon=True)
+    ax[3] = fig.add_subplot(gs1[1, 0], frameon=True)
+
+    gs2 = gridspec.GridSpec(2, 1)
+    gs2.update(left=0.76, right=0.96, top=0.63, bottom=0.4, hspace=0.15)
+    ax[4] = fig.add_subplot(gs2[0, 0], frameon=True)
+    ax[5] = fig.add_subplot(gs2[1, 0], frameon=True)
+
+    tha_id = np.where(uni_idx == 361)[0][0]
+    ax[2].plot(bold_exp_region[:, tha_id], lw=1.)
+    ax[3].plot(bold_sim_region[:, tha_id], lw=1.)
+    ax[2].set_title("thalamus left")
+
+    v1_id = np.where(uni_idx == 1)[0][0]
+    ax[4].plot(bold_exp_region[:, v1_id], lw=1.)
+    ax[5].plot(bold_sim_region[:, v1_id], lw=1.)
+    ax[4].set_title("V1 left")
+
     ax[0].imshow(fc_exp, cmap='RdBu_r', interpolation='gaussian')
     ax[1].imshow(fc_sim, cmap='RdBu_r', interpolation='gaussian')
     for i in range(2):
@@ -163,10 +194,14 @@ def heatmap_fc(res_path: str, fig=None):
                fontdict={'fontsize': 11, 'weight': 'bold',
                          'horizontalalignment': 'left', 'verticalalignment':
                              'bottom'}, transform=ax[1].transAxes)
-    ax[1].text(0.4, 1.2, f"p={p}",
+    ax[1].text(0.22, 1.2, f"correlation={p:.2f}",
                fontdict={'fontsize': 11, 'weight': 'bold',
                          'horizontalalignment': 'left', 'verticalalignment':
                              'bottom'}, transform=ax[1].transAxes)
+    ax[3].text(0.32, -0.25, f"correlation={p_bold:.2f}",
+               fontdict={'fontsize': 11, 'weight': 'bold',
+                         'horizontalalignment': 'left', 'verticalalignment':
+                             'bottom'}, transform=ax[3].transAxes)
 
 
 def statics(res_path, fig=None):
@@ -176,7 +211,6 @@ def statics(res_path, fig=None):
     ax[0] = fig.add_subplot(gs[0, 0], frameon=True)
     ax[1] = fig.add_subplot(gs[0, 1], frameon=True)
     ax[2] = fig.add_subplot(gs[0, 2], frameon=True)
-    # ax[3] = fig.add_subplot(gs[0, 3], frameon=False)
 
     file_nmae = re.compile(r"firing_.+_assim_\d+.npy")
     blocks = [name for name in os.listdir(res_path) if file_nmae.fullmatch(name)]
@@ -233,11 +267,10 @@ def statics(res_path, fig=None):
 
 
 if __name__ == '__main__':
-    # res_path = r"/public/home/ssct004t/project/zenglb/DetailedDTB/data/result_data/simulation_june12th"
-    res_path = r"/public/home/ssct004t/project/wangjiexiang/Digital_twin_brain/simuafterda_rest_thalamus_500m_202306120931/debug_202306121138_0.4_0.15_4_350_1e-8_1.21_30_0.02_0.05_0_0.08_0.5_0.1ms"
+    res_path = r"/public/home/ssct004t/project/zenglb/DetailedDTB/data/result_data/simulation_june12th"
     fig = plt.figure(figsize=(10, 10))
-    region_idx = (10, 105)
-    voxel_idx = (100, 10500)
+    region_idx = (10, 205)
+    voxel_idx = (100, 14500)
     typical_fr(res_path, voxel_idx, fig)
     typical_raster(res_path, region_idx, fig)
     heatmap_fc(res_path, fig)

@@ -205,17 +205,18 @@ def open_server(slurm_name: str, nodes: int, single_slots: int = 4):
     return ip
 
 
-block_dir = "/public/home/ssct004t/project/zenglb/DetailedDTB/data/table_file/dti_distribution_500m_whole_brain_bounding_new_outer1dot5"
-write_path = "/public/home/ssct004t/project/zenglb/DetailedDTB/data/result_data/simulation_june12th_para"
+block_dir = "/public/home/ssct004t/project/zenglb/DetailedDTB/data/table_file/dti_distribution_200m_whole_brain_bounding_new_outer1dot9"
+write_path = "/public/home/ssct004t/project/zenglb/DetailedDTB/data/result_data/simulation_june27_0.0025_0.0098"
 block_path = os.path.join(block_dir, "module/uint8")
-ip = open_server("nsr", nodes=14, single_slots=2)
+ip = open_server("nsr", nodes=6, single_slots=4)
 assert ip is not None
-model = simulation_critical(ip, block_path, dt=1., route_path=None, column=True, print_info=False,
-                            vmean_option=False, imean_option=True,
-                            sample_option=True, name="spike_dynamics", write_path=write_path, draw_figs=True)
+model = simulation_critical(ip, block_path, dt=0.1, route_path=None, column=True, print_info=False,
+                            vmean_option=False, imean_option=False,
+                            sample_option=True, name="spike_dynamics_0.1_normal", write_path=write_path, draw_figs=True)
 model.sample()
-model.update(10, 0.002)
-model.update(11, 0.000025)
-model.update(12, 0.0091)
+model.update(10, 0.0025)
+model.update(11, 0.)
+model.update(12, 0.0098)
+model.update(13, 0.)
 model.block_model.update_ou_background_stimuli(4, 0.40, 0.15)
-model(step=800, observation_time=50, hp_index=None, hp_path=None)
+model(step=800, observation_time=10, hp_index=None, hp_path=None)

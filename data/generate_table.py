@@ -176,12 +176,12 @@ class TestBlock(unittest.TestCase):
 
         return out_conn_prob, out_gm, degree_scale
 
-    def test_generate_cortex_brain(self, root_path="table_file", degree=100,
+    def test_generate_cortex_brain(self, root_path="table_file_new_model", degree=100,
                                    scale=int(2e8), dtype="uint8"):
-        first_path, second_path = self._make_directory_tree(root_path, scale, "whole_brain_bounding_new_outer2dot2", dtype=dtype)
+        first_path, second_path = self._make_directory_tree(root_path, scale, "whole_brain_bounding_70_130", dtype=dtype)
         blocks = 20
         print(f"Total {scale} neurons for DTB, merge to {blocks} blocks")
-        with open("processed_data/graph_whole_brain_bounding_new.pickle", "rb") as f:
+        with open("processed_data/graph_whole_brain_bounding_70_130.pickle", "rb") as f:
             file = pickle.load(f)
         conn_prob = file["conn_prob"]
         block_size = file["block_size"]

@@ -218,7 +218,7 @@ degree = 100
 scale = int(5e8)
 
 cmap = plt.cm.viridis_r
-v1_index = np.where(hpc_label==181)[0]
+v1_index = np.where(np.isin(hpc_label, np.array([1, 181])))[0]
 v1_synapse_scale = synapse_scale[v1_index].mean()
 # suppose v1 synapse is 100, then we assign number of synapse to all voxel
 synapse_scale = synapse_scale / v1_synapse_scale  # relative ratio of synapse scale
@@ -301,12 +301,12 @@ for label in uni_label:
 df_new = pd.DataFrame(dic)
 df = pd.merge(reader, df_new, how='outer',on='Label')
 df.head(5)
-df.to_csv("./processed_data/detailed_info_bounding_new.csv")
+df.to_csv("./processed_data/detailed_info_bounding_70_130.csv")
 
 # write to latex
 column_format = '|l|c|c|l|c|c|c|c|'
 
-with open(os.path.join("./processed_data", 'detailed_info_bounding_new.tex'), 'w') as f:
+with open(os.path.join("./processed_data", 'detailed_info_bounding_70_130.tex'), 'w') as f:
     f.write("""
                 \\documentclass[varwidth=25cm]{standalone}
                 \\usepackage{graphicx}
@@ -326,7 +326,7 @@ os.makedirs("./processed_data", exist_ok=True)
 popu_size = popu_size / scale
 degree_popu = degree_popu / degree
 graph_file = {"conn_prob":pop_conn_prob, "block_size":popu_size, "degree_scale":degree_popu}
-with open("./processed_data/graph_whole_brain_bounding_new.pickle", "wb") as f:
+with open("./processed_data/graph_whole_brain_bounding_70_130.pickle", "wb") as f:
     pickle.dump(graph_file, f)
 print("write processed data!")
 
