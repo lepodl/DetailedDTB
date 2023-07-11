@@ -3,22 +3,18 @@
 # @Author : lepold
 # @File : null_dti.py
 
-import os
+import networkx as nx
 import numpy as np
 import pandas as pd
-import networkx as nx
-
-from bct import (clustering, reference)
-
-from scipy.spatial.distance import cdist
 import scipy.stats as st
+# from bct import (clustering, reference)
+
 
 def check_symmetric(a, tol=1e-16):
     return np.allclose(a, a.T, atol=tol)
 
 
 def construct_null_model(type, **kwargs):
-
     if type == 'rand_mio':
         new_conn = rand_mio(**kwargs)
 
@@ -34,28 +30,29 @@ def construct_null_model(type, **kwargs):
     return new_conn
 
 
-#%% --------------------------------------------------------------------------------------------------------------------
+# %% --------------------------------------------------------------------------------------------------------------------
 # NULL NETWORK MODELS
 # ----------------------------------------------------------------------------------------------------------------------
 def erdos_renyi(conn=None, density=0.025, **kwargs):
-
-    if conn is not None: density = np.sum(conn.astype(bool).astype(int))/(len(conn)**2)
+    if conn is not None: density = np.sum(conn.astype(bool).astype(int)) / (len(conn) ** 2)
 
     new_conn = nx.to_numpy_array(nx.fast_gnp_random_graph(p=density, directed=False, **kwargs))
-    new_conn = new_conn*np.random.uniform(-1, 1, new_conn.shape)
+    new_conn = new_conn * np.random.uniform(-1, 1, new_conn.shape)
     new_conn[np.where(abs(new_conn) <= 0.00001)] = 0
 
     upper_diag = new_conn.copy()[np.triu_indices_from(new_conn, 1)]
     new_conn = new_conn.T
     new_conn[np.triu_indices_from(new_conn, 1)] = upper_diag
-    np.fill_diagonal(new_conn,0)
+    np.fill_diagonal(new_conn, 0)
 
     return new_conn
 
-def watts_and_strogatz(conn, p_conn=[0.1], bin=False):
 
+def watts_and_strogatz(conn, p_conn=0.8, bin=False):
     # scale conn data
     conn_vec = conn[np.tril_indices_from(conn, -1)]
+    original_data = conn_vec[np.nonzero(conn_vec)]
+    print("original data.shape", original_data.shape)
     data = pd.Series(conn_vec[np.nonzero(conn_vec)])
 
     # generate data given a distribution
@@ -72,6 +69,7 @@ def watts_and_strogatz(conn, p_conn=[0.1], bin=False):
         # get same start and end points of distribution
         start = dist.ppf(0.01, *arg, loc=loc, scale=scale) if arg else dist.ppf(0.01, loc=loc, scale=scale)
         end = dist.ppf(0.99, *arg, loc=loc, scale=scale) if arg else dist.ppf(0.99, loc=loc, scale=scale)
+        print("start -> end", start, end)
 
         # build PDF and turn into pandas Series
         x = np.linspace(start, end, size)
@@ -81,28 +79,27 @@ def watts_and_strogatz(conn, p_conn=[0.1], bin=False):
 
     # binarize conn data
     conn_bin = conn.astype(bool).astype(int)
-    deg = int(np.mean(np.sum(conn_bin, axis=0)))
+    deg = int(np.mean(np.sum(conn_bin, axis=0)) / 2)
     N = len(conn_bin)
+    print("deg", deg, "N", N, "nonzero", deg * N)
 
     # create networks
-    networks = []
-    for p in p_conn:
+    p = p_conn
 
-        # create watts_strogatz graph
-        G = nx.watts_strogatz_graph(N, deg, p)
-        network = nx.to_numpy_array(G)
+    # create watts_strogatz graph
+    G = nx.watts_strogatz_graph(N, deg, p)
+    network = nx.to_numpy_array(G)
 
-        if not bin:
-            # assign weights to conns
-            mask = np.nonzero(network)
-            actual_conns = conn[mask]
-            new_conns = get_pdf(data, st.powerlognorm, len(mask[0]))
-            network[mask] = new_conns[np.argsort(actual_conns)]
+    if not bin:
+        # assign weights to conns
+        mask = np.nonzero(network)
+        print("mask.shape", mask[0].shape)
+        actual_conns = conn[mask]
+        # new_conns = get_pdf(data, st.lognorm, len(mask[0]))
+        original_data = np.sort(np.concatenate([original_data, np.zeros(1000)]))
+        network[mask] = original_data[np.argsort(actual_conns)]
+    return network
 
-        # save weighted network
-        networks.append(network)
-
-    return np.dstack(networks)
 
 def rand_mio(conn, swaps=10):
     """
@@ -125,16 +122,17 @@ def rand_mio(conn, swaps=10):
     return conn_mat
 
 
-#%% --------------------------------------------------------------------------------------------------------------------
+# %% --------------------------------------------------------------------------------------------------------------------
 # NULL NETWORK MODELS
 # ----------------------------------------------------------------------------------------------------------------------
-def randmio_but_unperturbed(conn, class_mapping, swaps=10, unperturbed=None): #max_attempts=3,
+def randmio_but_unperturbed(conn, class_mapping, swaps=10, unperturbed=None):  # max_attempts=3,
 
     conn = conn.copy()
     n = len(conn)
     i, j = np.where(np.tril(conn))
 
-    k = [e for e, (i,j) in enumerate(zip(i,j)) if not (class_mapping[i] == unperturbed and class_mapping[j] == unperturbed)]
+    k = [e for e, (i, j) in enumerate(zip(i, j)) if
+         not (class_mapping[i] == unperturbed and class_mapping[j] == unperturbed)]
 
     swaps *= len(k)
 
@@ -157,11 +155,11 @@ def randmio_but_unperturbed(conn, class_mapping, swaps=10, unperturbed=None): #m
                 c = i[e2]
                 d = j[e2]
 
-                if (a != c and a != d and b != c and b != d) and not((unperturbed in class_mapping[[a,b]]) and (unperturbed in class_mapping[[c,d]])):
+                if (a != c and a != d and b != c and b != d) and not (
+                        (unperturbed in class_mapping[[a, b]]) and (unperturbed in class_mapping[[c, d]])):
                     break  # all 4 vertices must be different and edges must not belong both to unperturbed
 
             if np.random.rand() > .5:
-
                 i.setflags(write=True)
                 j.setflags(write=True)
                 i[e2] = d
@@ -209,30 +207,30 @@ def randmio_but_unperturbed(conn, class_mapping, swaps=10, unperturbed=None): #m
 
             att += 1
 
-    return conn#, eff
+    return conn  # , eff
 
 
 def increase_modularity(conn, class_mapping, swaps=10, max_attempts=10):
-
-    new_conn = (conn.copy()-conn.min())/(conn.max()-conn.min())
+    new_conn = (conn.copy() - conn.min()) / (conn.max() - conn.min())
     n = len(new_conn)
 
     eff = 0
     for clase in np.unique(class_mapping):
         print(f'\n-------------------{clase}---------------------------------')
 
-        swaps = int((swaps/100)*len(np.where(class_mapping == clase)[0]))
+        swaps = int((swaps / 100) * len(np.where(class_mapping == clase)[0]))
         print(f'\t number of swaps: {swaps}')
 
         for swap in range(swaps):
             print(f'\t------------------- swap: {swap}---------------------------------')
 
             # get pairs of nodes of existent edges across all the network
-            i,j = np.where(new_conn)
+            i, j = np.where(new_conn)
 
             # filter edges
-            k = [e for e, (i,j) in enumerate(zip(i,j)) if ((class_mapping[i] == clase) and (class_mapping[i] != class_mapping[j]))]
-#            k = [e for e, (i,j) in enumerate(zip(i,j)) if ((class_mapping[i] == clase) and (class_mapping[j] != clase))]
+            k = [e for e, (i, j) in enumerate(zip(i, j)) if
+                 ((class_mapping[i] == clase) and (class_mapping[i] != class_mapping[j]))]
+            #            k = [e for e, (i,j) in enumerate(zip(i,j)) if ((class_mapping[i] == clase) and (class_mapping[j] != clase))]
 
             # get and bin edges' weights
             weights = new_conn[(i[k], j[k])]
@@ -241,7 +239,7 @@ def increase_modularity(conn, class_mapping, swaps=10, max_attempts=10):
                                  labels=False,
                                  retbins=False,
                                  precision=8
-                                )
+                                 )
 
             categories = np.array(categories).astype(int)
 
@@ -260,37 +258,38 @@ def increase_modularity(conn, class_mapping, swaps=10, max_attempts=10):
                     c = i[e2]
                     d = j[e2]
 
-                    if (a != c and a != d and b != c and b != d) and (class_mapping[b] != class_mapping[d]) and (categories[k == e1][0] == categories[k == e2][0]):
+                    if (a != c and a != d and b != c and b != d) and (class_mapping[b] != class_mapping[d]) and (
+                            categories[k == e1][0] == categories[k == e2][0]):
                         break  # all 4 vertices must be different
 
                 # rewiring condition
                 rewire = True
                 if not (new_conn[a, c] or new_conn[b, d]):
 
-                   # connectedness condition
-                   R = new_conn.copy()
+                    # connectedness condition
+                    R = new_conn.copy()
 
-                   # e1
-                   R[a, c] = R[a, b]
-                   R[a, b] = 0
-                   R[c, a] = R[b, a]
-                   R[b, a] = 0
+                    # e1
+                    R[a, c] = R[a, b]
+                    R[a, b] = 0
+                    R[c, a] = R[b, a]
+                    R[b, a] = 0
 
-                   # e2
-                   R[b, d] = R[c, d]
-                   R[c, d] = 0
-                   R[d, b] = R[d, c]
-                   R[d, c] = 0
+                    # e2
+                    R[b, d] = R[c, d]
+                    R[c, d] = 0
+                    R[d, b] = R[d, c]
+                    R[d, c] = 0
 
-                   _, n_comp = clustering.get_components(R, no_depend=False)
-                   if n_comp[0] != n:
-                       rewire = False
-                   # end of connectedness condition
+                    _, n_comp = clustering.get_components(R, no_depend=False)
+                    if n_comp[0] != n:
+                        rewire = False
+                    # end of connectedness condition
 
-                   if rewire:
-                       new_conn = R.copy()
-                       eff += 1
-                       break
+                    if rewire:
+                        new_conn = R.copy()
+                        eff += 1
+                        break
 
                 att += 1
 
@@ -298,26 +297,27 @@ def increase_modularity(conn, class_mapping, swaps=10, max_attempts=10):
 
 
 def decrease_modularity(conn, class_mapping, swaps=50, max_attempts=10):
-
-    new_conn = (conn.copy()-conn.min())/(conn.max()-conn.min())
+    new_conn = (conn.copy() - conn.min()) / (conn.max() - conn.min())
     n = len(new_conn)
 
     eff = 0
     for clase in np.unique(class_mapping):
         print(f'\n-------------------{clase}---------------------------------')
 
-        swaps = int((swaps/100)*len(np.where(class_mapping == clase)[0]))
+        swaps = int((swaps / 100) * len(np.where(class_mapping == clase)[0]))
         print(f'\t number of swaps: {swaps}')
 
         for swap in range(swaps):
             print(f'\t------------------- swap: {swap}---------------------------------')
 
             # get pairs of nodes of existent edges across all the network
-            i,j = np.where(new_conn)
+            i, j = np.where(new_conn)
 
             # filter edges
-            k1 = [e for e, (i,j) in enumerate(zip(i,j)) if (class_mapping[i] == class_mapping[j] == clase)]
-            k2 = [e for e, (i,j) in enumerate(zip(i,j)) if ((class_mapping[i] != clase) and (class_mapping[j] != clase) and (class_mapping[i] != class_mapping[j]))]
+            k1 = [e for e, (i, j) in enumerate(zip(i, j)) if (class_mapping[i] == class_mapping[j] == clase)]
+            k2 = [e for e, (i, j) in enumerate(zip(i, j)) if (
+                        (class_mapping[i] != clase) and (class_mapping[j] != clase) and (
+                            class_mapping[i] != class_mapping[j]))]
 
             k = k1 + k2
 
@@ -328,7 +328,7 @@ def decrease_modularity(conn, class_mapping, swaps=50, max_attempts=10):
                                  labels=False,
                                  retbins=False,
                                  precision=8
-                                )
+                                 )
 
             categories = np.array(categories).astype(int)
 
@@ -363,31 +363,40 @@ def decrease_modularity(conn, class_mapping, swaps=50, max_attempts=10):
                 if not (new_conn[a, d] or new_conn[c, b]):
                     if not (new_conn[a, c] or new_conn[b, d]):
 
-                       # connectedness condition
-                       R = new_conn.copy()
+                        # connectedness condition
+                        R = new_conn.copy()
 
-                       # e1
-                       R[a, d] = R[a, b]
-                       R[a, b] = 0
-                       R[d, a] = R[b, a]
-                       R[b, a] = 0
+                        # e1
+                        R[a, d] = R[a, b]
+                        R[a, b] = 0
+                        R[d, a] = R[b, a]
+                        R[b, a] = 0
 
-                       # e2
-                       R[c, b] = R[c, d]
-                       R[c, d] = 0
-                       R[b, c] = R[d, c]
-                       R[d, c] = 0
+                        # e2
+                        R[c, b] = R[c, d]
+                        R[c, d] = 0
+                        R[b, c] = R[d, c]
+                        R[d, c] = 0
 
-                       _, n_comp = clustering.get_components(R, no_depend=False)
-                       if n_comp[0] != n:
-                           rewire = False
-                       # end of connectedness condition
+                        _, n_comp = clustering.get_components(R, no_depend=False)
+                        if n_comp[0] != n:
+                            rewire = False
+                        # end of connectedness condition
 
-                       if rewire:
-                           new_conn = R.copy()
-                           eff += 1
-                           break
+                        if rewire:
+                            new_conn = R.copy()
+                            eff += 1
+                            break
 
                 att += 1
 
     return new_conn, eff
+
+
+if __name__ == '__main__':
+    import h5py
+
+    file = h5py.File("./raw_data/NSR_data_May22.mat", "r")
+    dti = file["NSR_dti_net_full"][:]
+    network = watts_and_strogatz(dti)
+
